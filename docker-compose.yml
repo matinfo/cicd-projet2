@@ -1,10 +1,10 @@
 services:
   backend:
-    image: ghcr.io/dymacicd/cicd-projet2/backend:latest
+    image: ghcr.io/matinfo/cicd-projet2/backend:latest
     ports:
       - '3000:80'
   frontend:
-    image: ghcr.io/dymacicd/cicd-projet2/frontend:latest
+    image: ghcr.io/matinfo/cicd-projet2/frontend:latest
     ports:
       - '80:80'
   cypress:
