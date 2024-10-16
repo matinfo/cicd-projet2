@@ -14,12 +14,12 @@ env:
 jobs:
 
   # Job pour les tests du frontend
-  check_frontend:
+  test_frontend:
     runs-on: ubuntu-latest  # Système d'exploitation sur lequel le job s'exécutera
 
     defaults:  # Options par défaut pour le job
       run:  # Options par défaut pour les étapes
-        working-directory: client  # Dossier de travail pour les étapes
+        working-directory: frontend  # Dossier de travail pour les étapes
 
     strategy:  # Stratégie pour l'exécution du job
       fail-fast: true  # Arrête tous les jobs si l'un d'entre eux échoue
@@ -44,7 +44,7 @@ jobs:
         run: |  # Commandes shell à exécuter
           npm ${{ matrix.npm_command }}  # Exécute la commande npm définie dans la matrice
 
-  tests_backend:
+  test_backend:
     runs-on: ubuntu-latest # Système d'exploitation sur lequel le job s'exécutera
     defaults:  # Options par défaut pour le job
       run:  # Options par défaut pour les étapes
@@ -82,6 +82,7 @@ jobs:
 
   build:  # Nom du job
     runs-on: ubuntu-latest  # S'exécute sur la dernière version d'Ubuntu
+    needs: [test_frontend, test_backend]
     permissions:  # Permissions nécessaires
       packages: write  # Autorisation d'écrire aux packages
 
