@@ -1,5 +1,5 @@
 # Nom du `workflow`
-name: Build and push Docker images
+name: CI/CD worflow with Docker images
 
 # Événements déclenchant le `workflow`
 on:
@@ -7,8 +7,79 @@ on:
     branches:  # Filtrer les branches
       - main  # Exécute sur la branche `main`
 
+env:
+  DOCKER_IMG_TAG: latest
+  
 # Liste des jobs
 jobs:
+
+  # Job pour les tests du frontend
+  check_frontend:
+    runs-on: ubuntu-latest  # Système d'exploitation sur lequel le job s'exécutera
+
+    defaults:  # Options par défaut pour le job
+      run:  # Options par défaut pour les étapes
+        working-directory: client  # Dossier de travail pour les étapes
+
+    strategy:  # Stratégie pour l'exécution du job
+      fail-fast: true  # Arrête tous les jobs si l'un d'entre eux échoue
+      matrix:  # Définit une matrice pour exécuter des jobs en parallèle
+        npm_command: ['run lint', 'audit --audit-level=moderate']  # Différentes commandes npm à exécuter
+
+    steps:  # Liste des étapes à exécuter
+      - name: code checkout  # Récupère le code source
+        uses: actions/checkout@v4  # Utilise l'action GitHub pour faire le checkout du code
+
+      - name: Node.js install  # Installe Node.js
+        uses: actions/setup-node@v4  # Utilise l'action GitHub pour installer Node.js (LTS)
+        with:  # Options supplémentaires pour l'étape
+          cache: 'npm'  # Active le cache npm
+          cache-dependency-path: frontend/package-lock.json  # Chemin du fichier package-lock.json
+
+      - name: deps install  # Installe les dépendances du projet
+        run: |  # Commandes shell à exécuter
+          npm ci --prefer-offline # Exécute la commande npm ci
+
+      - name: lint and audit run  # Exécute les tests
+        run: |  # Commandes shell à exécuter
+          npm ${{ matrix.npm_command }}  # Exécute la commande npm définie dans la matrice
+
+  tests_backend:
+    runs-on: ubuntu-latest # Système d'exploitation sur lequel le job s'exécutera
+    defaults:  # Options par défaut pour le job
+      run:  # Options par défaut pour les étapes
+        working-directory: backend  # Dossier de travail pour les étapes
+  
+    strategy:  # Stratégie pour l'exécution du job
+      fail-fast: true  # Arrête tous les jobs si l'un d'entre eux échoue
+      matrix:  # Définit une matrice pour exécuter des jobs en parallèle
+        npm_command: ['run test:ci', 'run lint', 'audit --audit-level=moderate']  # Différentes commandes npm à exécuter
+
+    steps:  # Liste des étapes à exécuter
+      - name: code checkout  # Récupère le code source
+        uses: actions/checkout@v4  # Utilise l'action GitHub pour faire le checkout du code
+
+      - name: Node.js install  # Installe Node.js
+        uses: actions/setup-node@v4  # Utilise l'action GitHub pour installer Node.js
+        with:  # Options supplémentaires pour l'étape
+          cache: 'npm'  # Active le cache npm
+          cache-dependency-path: backend/package-lock.json  # Chemin du fichier package-lock.json
+
+      - name: deps install # Installe les dépendances du projet
+        run: |  # Commandes shell à exécuter
+          npm ci --prefer-offline # Exécute la commande npm ci
+
+      - name: tests, lint and audit run  # Exécute les tests
+        run: |  # Commandes shell à exécuter
+          npm ${{ matrix.npm_command }}  # Exécute la commande npm définie dans la matrice
+      
+      - name: upload of coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   build:  # Nom du job
     runs-on: ubuntu-latest  # S'exécute sur la dernière version d'Ubuntu
     permissions:  # Permissions nécessaires
@@ -48,7 +119,7 @@ jobs:
         uses: docker/build-push-action@v5  # Utilise l'action de build et push Docker
         with:  # Avec ces paramètres
           push: true  # Pousse l'image
-          tags: ${{ matrix.full_image_name }}:latest  # Tags pour l'image
+          tags: "${{ matrix.full_image_name }}:${{ env.DOCKER_IMG_TAG }}"  # Tags pour l'image
           context: ./${{ matrix.path }}  # Contexte pour la construction Docker
           cache-from: type=gha  # Utilise le cache GitHub Actions
           cache-to: type=gha,mode=max  # Enregistre le cache pour les utilisations futures
