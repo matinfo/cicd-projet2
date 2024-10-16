@@ -1,0 +1,241 @@
+# Nom du workflow de CI/CD
+name: CI/CD workflow
+
+# Paramètres pour gérer la concurrence des jobs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }} # Groupe de concurrence basé sur le nom du workflow et la référence git
+  cancel-in-progress: true # Annule les jobs en cours si un nouveau job est lancé dans le même groupe
+
+# Événement déclenchant le workflow
+on:
+  push: # Déclenché lors d'un push
+    branches: # Sur la branche spécifiée
+      - main # Branche "main"
+
+# Description des jobs à exécuter
+jobs:
+  # Job pour les tests du backend
+  test_backend:
+    defaults:  # Options par défaut pour le job
+      run:  # Options par défaut pour les étapes
+        working-directory: server  # Dossier de travail pour les étapes
+
+    strategy:  # Stratégie pour l'exécution du job
+      fail-fast: true  # Arrête tous les jobs si l'un d'entre eux échoue
+      matrix:  # Définit une matrice pour exécuter des jobs en parallèle
+        npm_command: ['run test:ci', 'run lint', 'audit']  # Différentes commandes npm à exécuter
+
+    runs-on: ubuntu-latest  # Système d'exploitation sur lequel le job s'exécutera
+
+    steps:  # Liste des étapes à exécuter
+      - name: code checkout  # Récupère le code source
+        uses: actions/checkout@v4  # Utilise l'action GitHub pour faire le checkout du code
+
+      - name: Node.js install  # Installe Node.js
+        uses: actions/setup-node@v4  # Utilise l'action GitHub pour installer Node.js
+        with:  # Options supplémentaires pour l'étape
+          cache: 'npm'  # Active le cache npm
+          cache-dependency-path: server/package-lock.json  # Chemin du fichier package-lock.json
+
+      - name: deps install # Installe les dépendances du projet
+        run: |  # Commandes shell à exécuter
+          npm ci --prefer-offline # Exécute la commande npm ci
+
+      - name: tests, lint and audit run  # Exécute les tests
+        run: |  # Commandes shell à exécuter
+          npm ${{ matrix.npm_command }}  # Exécute la commande npm définie dans la matrice
+      
+      - name: upload of coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # Job pour les tests du frontend
+  check_frontend:
+    defaults:  # Options par défaut pour le job
+      run:  # Options par défaut pour les étapes
+        working-directory: client  # Dossier de travail pour les étapes
+
+    strategy:  # Stratégie pour l'exécution du job
+      fail-fast: true  # Arrête tous les jobs si l'un d'entre eux échoue
+      matrix:  # Définit une matrice pour exécuter des jobs en parallèle
+        npm_command: ['run lint', 'audit']  # Différentes commandes npm à exécuter
+
+    runs-on: ubuntu-latest  # Système d'exploitation sur lequel le job s'exécutera
+
+    steps:  # Liste des étapes à exécuter
+      - name: code checkout  # Récupère le code source
+        uses: actions/checkout@v4  # Utilise l'action GitHub pour faire le checkout du code
+
+      - name: Node.js install  # Installe Node.js
+        uses: actions/setup-node@v4  # Utilise l'action GitHub pour installer Node.js
+        with:  # Options supplémentaires pour l'étape
+          cache: 'npm'  # Active le cache npm
+          cache-dependency-path: server/package-lock.json  # Chemin du fichier package-lock.json
+
+      - name: deps install  # Installe les dépendances du projet
+        run: |  # Commandes shell à exécuter
+          npm ci --prefer-offline # Exécute la commande npm ci
+
+      - name: lint and audit run  # Exécute les tests
+        run: |  # Commandes shell à exécuter
+          npm ${{ matrix.npm_command }}  # Exécute la commande npm définie dans la matrice
+
+  build_frontend:  # job pour construire le frontend
+
+    runs-on: ubuntu-latest  # environnement d'exécution
+
+    defaults:  # définition des valeurs par défaut pour les étapes
+      run:  # définition des valeurs par défaut pour les étapes run
+        working-directory: client  # définit le dossier de travail par défaut pour les étapes run
+
+    needs: [check_frontend]  # dépend du job check_frontend
+
+    steps:  # les étapes du job
+      - name: code checkout  # récupère le code source
+        uses: actions/checkout@v4
+  
+      - name: Node.js install  # installe Node.js
+        uses: actions/setup-node@v4  # utilise l'action setup-node en version 4
+        with:
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json  # chemin vers le package-lock.json pour le cache
+  
+      - name: deps install  # installe les dépendances npm
+        run: |
+          npm ci --prefer-offline
+  
+      - name: frontend build  # construit le frontend
+        run: |
+          npm run build
+  
+      - name: create frontend artifacts  # archive le dossier 'dist' pour une utilisation ultérieure
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist  # nom de l'artéfact
+          path: client/dist/  # chemin de l'artéfact
+          retention-days: 1  # durée de rétention de l'artéfact
+
+  build_e2e_frontend:  # job pour construire le frontend
+
+    runs-on: ubuntu-latest  # environnement d'exécution
+
+    defaults:  # définition des valeurs par défaut pour les étapes
+      run:  # définition des valeurs par défaut pour les étapes run
+        working-directory: client  # définit le dossier de travail par défaut pour les étapes run
+
+    needs: [check_frontend]  # dépend du job check_frontend
+
+    steps:  # les étapes du job
+      - name: code checkout  # récupère le code source
+        uses: actions/checkout@v4
+
+      - name: Node.js install  # installe Node.js
+        uses: actions/setup-node@v4  # utilise l'action setup-node en version 4
+        with:
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json  # chemin vers le package-lock.json pour le cache
+
+      - name: deps install  # installe les dépendances npm
+        run: |
+          npm ci --prefer-offline
+
+      - name: frontend build  # construit le frontend
+        run: |
+          npm run build:e2e
+
+      - name: create frontend artifacts  # archive le dossier 'dist' pour une utilisation ultérieure
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-e2e  # nom de l'artéfact
+          path: ./client/dist  # chemin de l'artéfact
+          retention-days: 1  # durée de rétention de l'artéfact
+
+  test_e2e:
+    runs-on: ubuntu-latest
+
+    needs: [test_backend, build_e2e_frontend]
+    
+    strategy:
+      matrix:
+        browser: ["chrome", "firefox", "edge"]
+
+    steps:
+      - name: code checkout
+        uses: actions/checkout@v4
+  
+      - name: install Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+  
+      - name: download frontend artifact e2e
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-e2e
+          path: ./client/dist
+    
+      - name: install deps backend
+        run: cd server && npm ci --prefer-offline
+
+      - name: start backend server
+        run: cd server && node index.js & # Doit ce mettre en arrière plan
+  
+      - name: run cypress e2e tests
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: client
+          browser: ${{ matrix.browser }}
+          start: npm run preview
+          wait-on: http://localhost:4173
+          wait-on-timeout: 60
+          config: baseUrl=http://localhost:4173 
+
+      - name: upload of coverage report to Codecov
+        if : matrix.browser == 'chrome' # pour ne pas uploader 3 fois le rapport
+        uses: codecov/codecov-action@v3
+        with:
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # Job pour le déploiement
+  deploy:
+    needs: [test_e2e, build_frontend]  # Dépend du job "test_e2e" et "build_frontend"
+    
+    runs-on: ubuntu-latest # Exécute sur la dernière version d'Ubuntu
+
+    steps:
+      - name: code checkout # Récupère le code source
+        uses: actions/checkout@v4 # Utilise l'action de checkout
+
+      - name: download frontend artifact # télécharge l'artéfact archivé précédemment
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist  # nom de l'artéfact
+          path: ./dist  # chemin où l'artéfact sera téléchargé
+
+      - name: copy backend and build frontend to server
+        uses: appleboy/scp-action@v0.1.7 # Utilise scp-action
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: 'server/*, dist/*' # copier les fichiers du backend et du frontend sur le serveur
+          target: ~/www
+          timeout: 120s
+
+      - name: server deployment - install deps and run # Étape de déploiement
+        uses: appleboy/ssh-action@v1.1.0 # Utilise ssh-action pour exécuter des commandes sur le serveur
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: | # Commandes shell à exécuter:
+            cd ~/www/server && npm install --omit=dev # Installe les dépendances sur le serveur
+            cd ~/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save # Démarre ou redémarre le service avec pm2
